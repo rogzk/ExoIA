@@ -4,18 +4,18 @@ Integrantes: Jefferson Arce, Brayan Erazo, Kevin Grisales Rodriguez
 Docente: Edgar Leonairo Pencue
 """
 
+# Importación de librerias
 import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
 import plotly.graph_objects as go
+import base64
 from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 
-# ============================================
-# 0. CONFIGURACIÓN DE PÁGINA (DEBE IR PRIMERO)
-# ============================================
+# Esctructura de la página
 st.set_page_config(
     page_title="ExoIA - Detector de Exoplanetas",
     page_icon="🪐",
@@ -23,16 +23,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ============================================
-# 0b. IMÁGENES EN BASE64 (FONDO Y LOGO)
-# ============================================
-import base64
-
 def img_to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# Intentar cargar fondo y logo embebidos
+# Carga de imágenes
 _bg_paths = [Path("background.jpg"), Path("assets/background.jpg")]
 _logo_paths = [Path("logo.png"), Path("assets/logo.png")]
 
@@ -50,9 +45,6 @@ for p in _logo_paths:
         _logo_ext = p.suffix.lstrip(".")
         break
 
-# ============================================
-# 0c. ESTILOS GLOBALES
-# ============================================
 _bg_css = f"background-image: url('data:image/jpeg;base64,{_bg_b64}');" if _bg_b64 else ""
 
 st.markdown(f"""
@@ -106,10 +98,8 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================
-# 1. CARGA DEL MODELO
-# ============================================
 
+# 1. Carga del modelo Random Forest.
 @st.cache_resource
 def cargar_modelo():
     """Carga el modelo entrenado desde el archivo"""
@@ -160,9 +150,7 @@ def cargar_label_encoder():
                 continue
     return None
 
-# ============================================
-# 2. CARGA DE BASE DE DATOS
-# ============================================
+# 2. Carga de la base de datos.
 
 @st.cache_data
 def cargar_datos_ejemplo():
@@ -222,24 +210,18 @@ def cargar_base_datos():
     st.info("Para usar datos reales, coloca 'baseDatosExoplanetas.csv' en la carpeta del proyecto.")
     return cargar_datos_ejemplo()
 
-# ============================================
-# 3. FUNCIONES AUXILIARES
-# ============================================
-
+# 2.1. Funciones de búsqueda.
 def buscar_por_identificador(identificador, df):
     """Busca un exoplaneta por su kepid, kepoi_name o kepler_name"""
     if df is None or df.empty or not identificador:
         return pd.DataFrame()
     
     identificador = str(identificador).strip()
-    
-    # Buscar en diferentes columnas
     resultado = df[
         (df['kepoi_name'].astype(str).str.contains(identificador, case=False, na=False)) |
         (df['kepler_name'].astype(str).str.contains(identificador, case=False, na=False)) |
         (df['kepid'].astype(str).str.contains(identificador, case=False, na=False))
     ]
-    
     return resultado
 
 def safe_format(value, format_str="{:.4f}", default="N/A"):
@@ -254,11 +236,10 @@ def safe_format(value, format_str="{:.4f}", default="N/A"):
 def predecir_exoplaneta(registro, modelo, le):
     """Predice si un registro corresponde a un exoplaneta verdadero"""
     
-    # Verificar si el modelo está cargado
+    # Verifica si el modelo está cargado
     if modelo is None:
         st.warning("⚠️ **MODELO NO CARGADO** - Usando modo demostración")
         
-        # Modo demostración: predecir por nombre
         nombre = str(registro.get('kepler_name', ''))
         es_exoplaneta = 'false positive' not in nombre.lower() and nombre not in ['', 'nan', 'None']
         return {
@@ -268,15 +249,12 @@ def predecir_exoplaneta(registro, modelo, le):
             'es_exoplaneta': es_exoplaneta
         }
     
-    # Predicción real con el modelo
     try:
-        # Columnas necesarias para el modelo
         columnas_features = ['koi_srad', 'koi_period', 'koi_time0bk', 'koi_impact', 
                              'koi_duration', 'koi_depth', 'koi_prad', 'koi_teq', 
                              'koi_insol', 'koi_model_snr', 'koi_steff', 'koi_slogg',
                              'koi_kepmag', 'koi_tce_plnt_num']
         
-        # Crear DataFrame con los valores
         valores = {}
         for col in columnas_features:
             val = registro.get(col, 0)
@@ -287,11 +265,9 @@ def predecir_exoplaneta(registro, modelo, le):
         
         X = pd.DataFrame([valores])
         
-        # Realizar predicción
         proba = modelo.predict_proba(X)[0]
         prediccion = modelo.predict(X)[0]
         
-        # Determinar etiqueta
         if le is not None:
             try:
                 etiqueta = le.inverse_transform([prediccion])[0]
@@ -316,11 +292,7 @@ def predecir_exoplaneta(registro, modelo, le):
             'es_exoplaneta': False
         }
 
-# ============================================
-# 4. INTERFAZ PRINCIPAL
-# ============================================
-
-# Header: logo + título al lado
+# 3. Interfaz principal.
 _logo_tag = f'<img src="data:image/{_logo_ext};base64,{_logo_b64}" />' if _logo_b64 else "🪐"
 
 st.markdown(f"""
@@ -335,16 +307,12 @@ st.markdown(f"""
 
 st.markdown("---")
 
-# Cargar recursos
 with st.spinner("Cargando recursos..."):
     modelo = cargar_modelo()
     le = cargar_label_encoder()
     datos = cargar_base_datos()
 
-# ============================================
-# 5. BÚSQUEDA
-# ============================================
-
+# 4. Búsqueda de exoplaneta.
 st.header("🪐 Buscar exoplaneta:")
 
 col1, col2 = st.columns([3, 1])
@@ -408,7 +376,7 @@ if buscar and identificador:
                         "Número de planetas": safe_format(registro.get('koi_tce_plnt_num'), "{:.0f}")
                     }
                     
-                    # Crear DataFrame y asegurar tipos string
+                    # Crear DataFrame
                     df_info = pd.DataFrame(info.items(), columns=["Parámetro", "Valor"])
                     df_info["Valor"] = df_info["Valor"].astype(str)
                     
@@ -420,14 +388,10 @@ if buscar and identificador:
                     st.metric("Confianza FALSE POSITIVE", f"{prediccion['prob_candidato']*100:.1f}%")
                     st.metric("Confianza CANDIDATE", f"{prediccion['prob_falso']*100:.1f}%")
                     
-                    # Mostrar advertencia si está en modo demostración
                     if modelo is None:
                         st.warning("⚠️ Modo demostración - Carga el modelo para predicciones reales")
 
-# ============================================
-# 6. SECCIÓN DE PRUEBA MANUAL
-# ============================================
-
+# 5. Prueba específica.
 st.header("⚙️ Prueba personalizada")
 
 with st.expander("Ingresar valores manuales para predicción"):
@@ -451,7 +415,6 @@ with st.expander("Ingresar valores manuales para predicción"):
         slogg = st.number_input("log(g)", value=4.5, step=0.1, key="slogg_input")
     
     if st.button("Clasificar", type="primary", key="clasificar_btn"):
-        # Simulación de predicción basada en parámetros
         es_exoplaneta_sim = (periodo > 2.5 and prad > 1.5 and snr > 20 and prad < 20)
         
         col_res1, col_res2, col_res3 = st.columns([1, 2, 1])
@@ -468,10 +431,7 @@ with st.expander("Ingresar valores manuales para predicción"):
                 st.metric("Confianza estimada", f"{confianza:.0f}%")
                 st.info("💡 *Simulación - Para predicción real usa el modelo entrenado.*")
 
-# ============================================
-# 7. PIE DE PÁGINA
-# ============================================
-
+#6. Pie de página.
 st.markdown("---")
 st.markdown(
     """
